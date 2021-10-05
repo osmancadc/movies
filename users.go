@@ -1,29 +1,161 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 )
 
-func createUser(w http.ResponseWriter, r *http.Request) {
-	// var newUser User
+func CreateUser(w http.ResponseWriter, r *http.Request) {
+	var newUser User
 
-	// reqBody, err := ioutil.ReadAll(r.Body)
-	// if err != nil {
-	// 	fmt.Fprintf(w, "Insert a Valid Task Data")
-	// }
+	reqBody, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fmt.Fprintf(w, "Insert a Valid Task Data")
+	}
 
-	// json.Unmarshal(reqBody, &newTask)
-	// newTask.ID = len(tasks) + 1
-	// tasks = append(tasks, newTask)
+	json.Unmarshal(reqBody, &newUser)
 
-	// w.Header().Set("Content-Type", "application/json")
-	// w.WriteHeader(http.StatusCreated)
-	// json.NewEncoder(w).Encode(newTask)
-	log.Println("This is creation of users")
+	isValid, err := ValidateParameters(newUser)
+	if !isValid {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(err.Error())
+		return
+	}
 
+	existUser, err := VerifyUser(newUser.Email)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(err.Error())
+		return
+	}
+
+	if existUser {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode("The email is already registered")
+		return
+	}
+
+	err = InsertUser(newUser)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode("User created successfully")
 }
 
-// func funcionPrueba() {
-// 	log.Println("Funcion prueba")
-// }
+func AccessUser(w http.ResponseWriter, r *http.Request) {
+	var accessUser User
+
+	reqBody, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		fmt.Fprintf(w, "Insert a Valid Task Data")
+	}
+
+	json.Unmarshal(reqBody, &accessUser)
+
+	isValid, err := ValidateParameters(accessUser)
+	if !isValid {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(err.Error())
+		return
+	}
+
+	existUser, err := VerifyUser(accessUser.Email)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(err.Error())
+		return
+	}
+
+	if !existUser {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode("The user doesn't exists")
+		return
+	}
+
+	token, err := GenerateToken(accessUser.Email)
+	if err != nil {
+		log.Printf("Error generando el token, %+v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(err.Error())
+		return
+	}
+
+	response := AccessReponse{
+		Message: "User loged successfully",
+		Token:   token,
+	}
+
+	jsonResponse, err := json.Marshal(response)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	w.Write(jsonResponse)
+}
+
+func VerifyUser(email string) (bool, error) {
+	db, err := GetDatabase()
+	if err != nil {
+		fmt.Printf("error with the database connection: %v", err)
+		return false, err
+	}
+
+	defer db.Close()
+
+	result, err := db.Query(`SELECT * FROM users where email like ?;`, email)
+	if err != nil {
+		log.Println(err.Error())
+	}
+
+	return result.Next(), nil
+}
+
+func InsertUser(user User) error {
+
+	if user.Email == "" || user.Password == "" {
+		return errors.New("invalid user")
+	}
+
+	db, err := GetDatabase()
+	if err != nil {
+		fmt.Printf("error with the database connection: %v", err)
+		return err
+	}
+
+	defer db.Close()
+
+	insertSentence, err := db.Prepare("INSERT INTO movies.users (name, email, password) VALUES(?, ?, ?);")
+	if err != nil {
+		return err
+	}
+
+	defer insertSentence.Close()
+
+	_, err = insertSentence.Exec(user.Name, user.Email, user.Password)
+	if err != nil {
+		return err
+	}
+	return nil
+}
