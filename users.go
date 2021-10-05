@@ -9,6 +9,11 @@ import (
 	"net/http"
 )
 
+const (
+	register = 1
+	login    = 2
+)
+
 func CreateUser(w http.ResponseWriter, r *http.Request) {
 	var newUser User
 
@@ -27,7 +32,7 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	existUser, err := VerifyUser(newUser.Email)
+	existUser, err := VerifyUser(register, newUser.Email)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -73,7 +78,7 @@ func AccessUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	existUser, err := VerifyUser(accessUser.Email)
+	existUser, err := VerifyUser(login, accessUser.Email, accessUser.Password)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -115,7 +120,7 @@ func AccessUser(w http.ResponseWriter, r *http.Request) {
 	w.Write(jsonResponse)
 }
 
-func VerifyUser(email string) (bool, error) {
+func VerifyUser(verificationType int, parameters ...string) (bool, error) {
 	db, err := GetDatabase()
 	if err != nil {
 		fmt.Printf("error with the database connection: %v", err)
@@ -124,12 +129,19 @@ func VerifyUser(email string) (bool, error) {
 
 	defer db.Close()
 
-	result, err := db.Query(`SELECT * FROM users where email like ?;`, email)
-	if err != nil {
-		log.Println(err.Error())
+	if verificationType == register {
+		result, err := db.Query(`SELECT * FROM users where email like ?;`, parameters[0])
+		if err != nil {
+			log.Println(err.Error())
+		}
+		return result.Next(), nil
+	} else {
+		result, err := db.Query(`SELECT * FROM users where email = ? and password = ?;`, parameters[0], parameters[1])
+		if err != nil {
+			log.Println(err.Error())
+		}
+		return result.Next(), nil
 	}
-
-	return result.Next(), nil
 }
 
 func InsertUser(user User) error {
