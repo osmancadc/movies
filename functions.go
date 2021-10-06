@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 	"unicode"
@@ -85,4 +87,21 @@ func ValidateToken(token string) bool {
 		return false
 	}
 	return true
+}
+
+func SendResponse(w http.ResponseWriter, status int, message interface{}, isJson ...bool) {
+	if len(isJson) > 0 && isJson[0] {
+		jsonResponse, err := json.Marshal(message)
+		if err != nil {
+			SendResponse(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		w.Write(jsonResponse)
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(message)
+	}
 }

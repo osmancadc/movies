@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+
+	"github.com/robbert229/jwt"
 )
 
 const (
@@ -26,38 +28,28 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	isValid, err := ValidateParameters(newUser)
 	if !isValid {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(err.Error())
+		SendResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	existUser, err := VerifyUser(register, newUser.Email)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(err.Error())
+		SendResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	if existUser {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode("The email is already registered")
+		SendResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	err = InsertUser(newUser)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(err.Error())
+		SendResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode("User created successfully")
+	SendResponse(w, http.StatusAccepted, "User created successfully")
 }
 
 func AccessUser(w http.ResponseWriter, r *http.Request) {
@@ -72,33 +64,25 @@ func AccessUser(w http.ResponseWriter, r *http.Request) {
 
 	isValid, err := ValidateParameters(accessUser)
 	if !isValid {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(err.Error())
+		SendResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	existUser, err := VerifyUser(login, accessUser.Email, accessUser.Password)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(err.Error())
+		SendResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	if !existUser {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode("The user doesn't exists")
+		SendResponse(w, http.StatusBadRequest, "The user doesn't exists")
 		return
 	}
 
 	token, err := GenerateToken(accessUser.Email)
 	if err != nil {
 		log.Printf("Error generando el token, %+v", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(err.Error())
+		SendResponse(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -107,17 +91,7 @@ func AccessUser(w http.ResponseWriter, r *http.Request) {
 		Token:   token,
 	}
 
-	jsonResponse, err := json.Marshal(response)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(err.Error())
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted)
-	w.Write(jsonResponse)
+	SendResponse(w, http.StatusAccepted, response, true)
 }
 
 func VerifyUser(verificationType int, parameters ...string) (bool, error) {
@@ -170,4 +144,48 @@ func InsertUser(user User) error {
 		return err
 	}
 	return nil
+}
+
+func GetUserID(token string) int {
+	id := -1
+
+	email, err := GetUserEmail(token)
+	if err != nil {
+		return id
+	}
+
+	db, err := GetDatabase()
+	if err != nil {
+		fmt.Printf("error with the database connection: %v", err)
+		return id
+	}
+
+	defer db.Close()
+
+	result, err := db.Query(`SELECT id FROM users where email = ?`, email)
+	if err != nil {
+		log.Println(err.Error())
+	}
+	result.Next()
+
+	err = result.Scan(&id)
+	if err != nil {
+		return id
+	}
+	return id
+}
+
+func GetUserEmail(token string) (string, error) {
+	algorithm := jwt.HmacSha256("SecretPassword")
+
+	claims, err := algorithm.Decode(token)
+	if err != nil {
+		return "", err
+	}
+
+	email, err := claims.Get("email")
+	if err != nil {
+		return "", err
+	}
+	return email.(string), nil
 }

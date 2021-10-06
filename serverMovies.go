@@ -17,8 +17,9 @@ func main() {
 	router.HandleFunc("/", indexRoute)
 	router.HandleFunc("/users/register", CreateUser).Methods("POST")
 	router.HandleFunc("/users/login", AccessUser).Methods("POST")
-	router.HandleFunc("/movies/get/public", getMovies).Methods("GET")
-	// router.HandleFunc("/tasks/{id}", getOneTask).Methods("GET")
+	router.HandleFunc("/movies/get/public", getPublicMovies).Methods("GET")
+	router.HandleFunc("/movies/get/private", getPrivateMovies).Methods("GET")
+	router.HandleFunc("/movies/create", CreateMovie).Methods("POST")
 	// router.HandleFunc("/tasks/{id}", deleteTask).Methods("DELETE")
 	// router.HandleFunc("/tasks/{id}", updateTask).Methods("PUT")
 
